@@ -1,10 +1,26 @@
 import { useEffect, useState } from "react";
-import { settingsApi, type NotifyEventKind, type Settings, type SettingsPatch } from "../api.ts";
+import {
+  configApi,
+  modelApi,
+  settingsApi,
+  type ModelInfo,
+  type NotifyEventKind,
+  type Settings,
+  type SettingsPatch,
+} from "../api.ts";
 import type { Appearance } from "../appearance.ts";
 import { AppearancePanel } from "./AppearancePanel.tsx";
-import { CheckIcon } from "./Icons.tsx";
+import { CheckIcon, TrashIcon } from "./Icons.tsx";
 import { McpPanel } from "./McpPanel.tsx";
 import { OpenTargetPicker } from "./OpenTargetPicker.tsx";
+import { Select } from "./Select.tsx";
+
+function labelFromModelId(id: string): string {
+  const m = id.match(/^claude-([a-z]+)-(.+)$/);
+  if (!m) return id;
+  const [, family, version] = m;
+  return `${family[0].toUpperCase()}${family.slice(1)} ${version.replace(/-/g, ".")}`;
+}
 
 /**
  * Preferences, saved on change.
@@ -50,13 +66,14 @@ const EVENTS: { kind: NotifyEventKind; label: string; help: string }[] = [
  * scrolling: notifications alone is longer than a screen, and the three short
  * panels were disappearing under it.
  */
-type SectionKey = "appearance" | "notifications" | "sessions" | "git" | "mcp";
+type SectionKey = "appearance" | "notifications" | "sessions" | "git" | "models" | "mcp";
 
 const SECTIONS: { key: SectionKey; label: string; help: string }[] = [
   { key: "appearance", label: "Appearance", help: "Theme, accent, tab icon" },
   { key: "notifications", label: "Notifications", help: "What interrupts you" },
   { key: "sessions", label: "Sessions", help: "Where a card opens" },
   { key: "git", label: "Git", help: "Diffs and worktrees" },
+  { key: "models", label: "Models", help: "Default and available models" },
   { key: "mcp", label: "MCP", help: "Connectors and sign-in" },
 ];
 
@@ -116,6 +133,24 @@ export function SettingsView({
     setWebhook(settings.notifications.googleChatWebhook);
     setUrl(settings.notifications.dashboardUrl);
   }, [settings]);
+
+  const [allModels, setAllModels] = useState<ModelInfo[]>([]);
+  useEffect(() => {
+    modelApi
+      .list()
+      .then((r) => setAllModels(r.models))
+      .catch(() => {});
+  }, []);
+
+  const [knownIds, setKnownIds] = useState<string[]>([]);
+  useEffect(() => {
+    configApi
+      .get()
+      .then((r) => setKnownIds(Object.keys(r.pricing)))
+      .catch(() => {});
+  }, []);
+
+  const [customDraft, setCustomDraft] = useState("");
 
   const nav = (
     <nav className="settings-nav" aria-label="Settings sections">
@@ -486,16 +521,14 @@ export function SettingsView({
             <div className="set-grid">
               <label className="field">
                 <span>Default layout</span>
-                <span className="select-wrap">
-                  <select
-                    className="search select"
-                    value={settings.ui.diffMode}
-                    onChange={(e) => save({ ui: { diffMode: e.target.value as "unified" | "split" } })}
-                  >
-                    <option value="unified">Unified</option>
-                    <option value="split">Split</option>
-                  </select>
-                </span>
+                <Select
+                  value={settings.ui.diffMode}
+                  onChange={(v) => save({ ui: { diffMode: v as "unified" | "split" } })}
+                  options={[
+                    { value: "unified", label: "Unified" },
+                    { value: "split", label: "Split" },
+                  ]}
+                />
               </label>
               <label className="set-row" style={{ alignSelf: "end" }}>
                 <input
@@ -582,6 +615,157 @@ export function SettingsView({
             </p>
           </div>
         )}
+
+        {(() => {
+          if (section !== "models") return null;
+          const customModels = settings.ui.customModels ?? [];
+          const disabled = settings.ui.disabledModels ?? [];
+          const merged = [
+            ...allModels
+              .filter((m) => m.value !== "default")
+              .map((m) => ({
+                value: m.value,
+                label: m.displayName,
+                hint: m.description,
+                custom: false,
+              })),
+            ...customModels
+              .filter((c) => !allModels.some((m) => m.value === c.value))
+              .map((c) => ({ value: c.value, label: c.label, hint: c.value, custom: true })),
+          ];
+          const knownCandidates = knownIds.filter((id) => !merged.some((m) => m.value === id));
+
+          const addCustom = (value: string, label?: string) => {
+            const v = value.trim();
+            if (!v || merged.some((m) => m.value === v)) return;
+            save({
+              ui: { customModels: [...customModels, { value: v, label: label?.trim() || labelFromModelId(v) }] },
+            });
+            setCustomDraft("");
+          };
+          const removeCustom = (value: string) => {
+            save({
+              ui: {
+                customModels: customModels.filter((c) => c.value !== value),
+                disabledModels: disabled.filter((v) => v !== value),
+                defaultModel: settings.ui.defaultModel === value ? "" : settings.ui.defaultModel,
+              },
+            });
+          };
+
+          return (
+            <div className="panel">
+              <h2>Default model</h2>
+              <p className="hint">Used for a new session unless you pick a different one when starting it.</p>
+              <Select
+                value={settings.ui.defaultModel || "default"}
+                options={[
+                  { value: "default", label: "Default (recommended)", hint: "Let the CLI pick" },
+                  ...merged.filter((m) => !disabled.includes(m.value)),
+                ]}
+                onChange={(v) => save({ ui: { defaultModel: v === "default" ? "" : v } })}
+              />
+
+              <h2 style={{ marginTop: 22 }}>Available models</h2>
+              <p className="hint">Turn off the ones you never want to see. At least one has to stay on.</p>
+              {merged.length === 0 ? (
+                <p className="set-help">Loading the model list — start or open a session once to populate it.</p>
+              ) : (
+                <div className="set-group">
+                  {merged.map((m) => {
+                    const isOn = !disabled.includes(m.value);
+                    const onlyOneLeft = isOn && merged.length - disabled.length <= 1;
+                    return (
+                      <label className="set-row" key={m.value}>
+                        <input
+                          type="checkbox"
+                          checked={isOn}
+                          disabled={onlyOneLeft}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? disabled.filter((v) => v !== m.value)
+                              : [...disabled, m.value];
+                            save({ ui: { disabledModels: next } });
+                          }}
+                        />
+                        <span className="set-text">
+                          <span className="set-label">
+                            {m.label}
+                            {m.custom && <span className="set-help"> · {m.value} · added by hand</span>}
+                          </span>
+                          <span className="set-help">{m.hint}</span>
+                        </span>
+                        {m.custom && (
+                          <button
+                            type="button"
+                            className="icon-btn tiny"
+                            title="Remove this model"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              removeCustom(m.value);
+                            }}
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              <h2 style={{ marginTop: 22 }}>Add an older or unlisted model</h2>
+              <p className="hint">
+                The CLI's picker only offers a handful of current aliases. Older and dated model IDs
+                still work — Claude Code accepts any exact model ID, family alias, or version prefix —
+                but they skip its usual validation: a retired ID or an account not entitled to it will
+                only fail once a session actually tries to start with it.
+              </p>
+              {knownCandidates.length > 0 && (
+                <div className="chip-row" style={{ marginBottom: 10 }}>
+                  {knownCandidates.map((id) => (
+                    <button
+                      type="button"
+                      key={id}
+                      className="chip-btn"
+                      onClick={() => addCustom(id)}
+                      title={id}
+                    >
+                      + {labelFromModelId(id)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="inline-add-row">
+                <label className="field">
+                  <span>Model ID</span>
+                  <input
+                    className="search"
+                    spellCheck={false}
+                    placeholder="e.g. claude-opus-4-8"
+                    value={customDraft}
+                    onChange={(e) => setCustomDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addCustom(customDraft);
+                    }}
+                  />
+                </label>
+                <div className="field inline-add-btn">
+                  <span aria-hidden="true">&nbsp;</span>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    disabled={!customDraft.trim()}
+                    onClick={() => addCustom(customDraft)}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {section === "mcp" && <McpPanel />}
       </div>

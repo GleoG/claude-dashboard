@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   fmtAgo,
   gitApi,
@@ -8,6 +9,29 @@ import {
   type RepoStatus,
 } from "../api.ts";
 import { CheckIcon, GitIcon, PlusIcon, WorktreeIcon } from "./Icons.tsx";
+
+const POP_MARGIN = 8;
+
+function computePopPos(trigger: HTMLElement, menu: HTMLElement | null) {
+  const t = trigger.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(440, vw * 0.88);
+
+  let left = t.left;
+  if (left + width > vw - POP_MARGIN) left = t.right - width;
+  if (left < POP_MARGIN) left = POP_MARGIN;
+  if (left + width > vw - POP_MARGIN) left = Math.max(POP_MARGIN, vw - POP_MARGIN - width);
+
+  const menuH = menu?.scrollHeight || 420;
+  const spaceBelow = vh - t.bottom - POP_MARGIN;
+  const spaceAbove = t.top - POP_MARGIN;
+  const below = spaceBelow >= Math.min(menuH, 240) || spaceBelow >= spaceAbove;
+  const maxHeight = Math.max(200, Math.min(560, (below ? spaceBelow : spaceAbove) - 6));
+  const top = below ? t.bottom + 6 : t.top - 6 - Math.min(menuH, maxHeight);
+
+  return { top, left, maxHeight };
+}
 
 /**
  * Switch branch from the dashboard.
@@ -58,7 +82,9 @@ export function BranchSwitcher({
    */
   const [loadError, setLoadError] = useState<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   /** Discards responses to superseded keystrokes, which can land out of order. */
   const seq = useRef(0);
 
@@ -97,7 +123,10 @@ export function BranchSwitcher({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (wrap.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -109,6 +138,24 @@ export function BranchSwitcher({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const recompute = () => {
+      if (!wrap.current) return;
+      setPos(computePopPos(wrap.current, menuRef.current));
+    };
+    recompute();
+    window.addEventListener("resize", recompute);
+    window.addEventListener("scroll", recompute, true);
+    return () => {
+      window.removeEventListener("resize", recompute);
+      window.removeEventListener("scroll", recompute, true);
+    };
+  }, [open, list, failure, loadError]);
 
   const dirty = status.counts.staged + status.counts.unstaged + status.counts.untracked;
 
@@ -196,8 +243,19 @@ export function BranchSwitcher({
         </span>
       </button>
 
-      {open && (
-        <div className="branch-pop">
+      {open &&
+        createPortal(
+          <div
+            className="branch-pop"
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              top: pos?.top ?? 0,
+              left: pos?.left ?? 0,
+              maxHeight: pos?.maxHeight,
+              visibility: pos ? "visible" : "hidden",
+            }}
+          >
           <div className="branch-pop-head">
             <input
               ref={input}
@@ -305,8 +363,9 @@ export function BranchSwitcher({
                 : `${list.total.local} local, ${list.total.remote} remote.`}
             </div>
           )}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

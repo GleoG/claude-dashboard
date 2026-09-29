@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { DATA_DIR } from "./paths.ts";
+import { claudeEnv, DATA_DIR } from "./paths.ts";
 
 /**
  * The machine's MCP servers, and a way to authenticate the ones that need it.
@@ -200,7 +200,7 @@ async function probe(): Promise<McpSnapshot> {
       stdout: "pipe",
       stderr: "pipe",
       // No tty, so nothing can stop to ask us something.
-      env: { ...process.env, NO_COLOR: "1", CI: "1" },
+      env: claudeEnv({ NO_COLOR: "1", CI: "1" }),
     });
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -261,7 +261,7 @@ export function startMcpLogin(name: string): { ok: boolean; error: string | null
       cwd: PROBE_CWD,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, NO_COLOR: "1" },
+      env: claudeEnv({ NO_COLOR: "1" }),
     });
     const timer = setTimeout(() => proc.kill(), LOGIN_TIMEOUT_MS);
 

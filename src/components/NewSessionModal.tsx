@@ -8,12 +8,14 @@ import {
   type Favourite,
   type PermissionMode,
   type RepoStatus,
+  type Settings,
   type Worktree,
 } from "../api.ts";
 import { MODES, MODE_HELP, MODE_LABEL, STARTER_MODELS } from "./Conversation.tsx";
 import { BranchPicker, type BranchChoice } from "./BranchPicker.tsx";
 import { FoldersModal } from "./FoldersModal.tsx";
 import { FolderIcon, GitIcon, PlusIcon, SearchIcon, WorktreeIcon } from "./Icons.tsx";
+import { Select } from "./Select.tsx";
 
 /**
  * Start a session the dashboard owns: directory, model, permissions, title.
@@ -62,15 +64,17 @@ export function NewSessionModal({
    * visible, so a prefill you did not want is one click to leave.
    */
   initialCwd = null,
+  settings = null,
 }: {
   projects: { path: string }[];
   onClose: () => void;
   onStarted: (key: string) => void;
   initialCwd?: string | null;
+  settings?: Settings | null;
 }) {
   const [favourites, setFavourites] = useState<Favourite[] | null>(null);
   const [cwd, setCwd] = useState(initialCwd ?? "");
-  const [model, setModel] = useState("default");
+  const [model, setModel] = useState(settings?.ui.defaultModel || "default");
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState<PermissionMode>("auto");
   const [custom, setCustom] = useState(false);
@@ -111,16 +115,27 @@ export function NewSessionModal({
 
   // Whatever the CLI actually offers, learned from the last session that ran.
   // STARTER_MODELS is only the fallback for a dashboard that has never run one.
-  const [models, setModels] = useState(STARTER_MODELS);
+  const [models, setModels] = useState<{ value: string; label: string; hint?: string }[]>(
+    STARTER_MODELS,
+  );
+  const disabledModels = settings?.ui.disabledModels ?? [];
+  const customModels = settings?.ui.customModels ?? [];
   useEffect(() => {
     modelApi
       .list()
       .then((r) => {
-        if (r.models.length > 0) {
-          setModels(r.models.map((m) => ({ value: m.value, label: m.displayName })));
-        }
+        const cliModels = r.models.map((m) => ({ value: m.value, label: m.displayName, hint: m.description }));
+        const combined = [
+          ...cliModels,
+          ...customModels
+            .filter((c) => !cliModels.some((m) => m.value === c.value))
+            .map((c) => ({ value: c.value, label: c.label, hint: c.value })),
+        ];
+        const enabled = combined.filter((m) => !disabledModels.includes(m.value));
+        if (enabled.length > 0) setModels(enabled);
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -480,36 +495,16 @@ export function NewSessionModal({
         <div className="modal-cols">
           <label className="field">
             <span>Model</span>
-            <span className="select-wrap">
-              <select
-                className="search select"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              >
-                {models.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </span>
+            <Select value={model} options={models} onChange={setModel} />
           </label>
 
           <label className="field">
             <span>Permissions</span>
-            <span className="select-wrap">
-              <select
-                className="search select"
-                value={mode}
-                onChange={(e) => setMode(e.target.value as PermissionMode)}
-              >
-                {MODES.map((m) => (
-                  <option key={m} value={m} title={MODE_HELP[m]}>
-                    {MODE_LABEL[m]}
-                  </option>
-                ))}
-              </select>
-            </span>
+            <Select
+              value={mode}
+              onChange={(v) => setMode(v as PermissionMode)}
+              options={MODES.map((m) => ({ value: m, label: MODE_LABEL[m], hint: MODE_HELP[m] }))}
+            />
           </label>
         </div>
 

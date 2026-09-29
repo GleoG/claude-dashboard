@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, sep } from "node:path";
-import { DATA_DIR } from "./paths.ts";
+import { claudeEnv, DATA_DIR } from "./paths.ts";
 import {
   query,
   renameSession,
@@ -614,6 +614,7 @@ export function startAgent(opts: StartOptions): string {
   agent.q = query({
     prompt: queue,
     options: {
+      env: claudeEnv(),
       cwd: opts.cwd,
       ...(opts.research ? RESEARCH_OPTIONS : {}),
       model: opts.model,

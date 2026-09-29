@@ -511,24 +511,26 @@ export default function App() {
   }, []);
 
   /**
-   * Three independent destinations, one per gesture — Settings → Sessions is
-   * where each is configured. `full`/`tile` (⌘/Ctrl-click, middle click,
-   * ⌥/Option-click) each look up their own setting rather than being
-   * hardcoded to "page"/"tile"; a plain click looks up `clickOpensIn`. `tile`
-   * wins over `full` if somehow both fire, matching the old hardcoded
-   * priority — a floating window is more specific than "give it the whole
-   * page" either way. `drawer` bypasses the settings entirely: it's the
-   * dedicated drawer button's explicit ask, not a gesture, and with the
-   * other three all independently reconfigurable none of them is guaranteed
-   * to still reach the drawer.
+   * Gesture-based destinations, one per gesture — Settings → Sessions is
+   * where each is configured. `full` (⌘/Ctrl-click, middle click) and
+   * `option` (⌥/Option-click, ⌥-Enter) each look up their own setting rather
+   * than being hardcoded to "page"/"tile"; a plain click looks up
+   * `clickOpensIn`. `tile` and `drawer` bypass the settings entirely: they're
+   * the dedicated tile/drawer buttons' explicit ask, not a gesture, and with
+   * the gestures independently reconfigurable neither is guaranteed to still
+   * be reachable through a setting.
    */
   const openSession = useCallback(
-    (id: string, opts?: { full?: boolean; tile?: boolean; drawer?: boolean }) => {
+    (id: string, opts?: { full?: boolean; tile?: boolean; drawer?: boolean; option?: boolean }) => {
       if (opts?.drawer) {
         setOpenId(id);
         return;
       }
-      const target = opts?.tile
+      if (opts?.tile) {
+        openTile(id);
+        return;
+      }
+      const target = opts?.option
         ? (settings?.ui.optionClickOpensIn ?? "tile")
         : opts?.full
           ? (settings?.ui.cmdClickOpensIn ?? "page")
@@ -843,6 +845,7 @@ export default function App() {
         <NewSessionModal
           projects={projects}
           initialCwd={newIn}
+          settings={settings}
           onClose={() => {
             setShowNew(false);
             setNewIn(null);

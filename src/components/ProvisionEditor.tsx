@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { gitApi, type ProvisionMode, type ProvisionPlan, type ProvisionRule } from "../api.ts";
 import { TrashIcon } from "./Icons.tsx";
+import { Select } from "./Select.tsx";
 
 /**
  * What this repository carries into a new checkout, editable here.
@@ -405,16 +406,18 @@ function ModeSelect({
 }) {
   return (
     <span className="pv-mode" data-mode={mode}>
-      <select
+      <Select
+        compact
         value={mode}
         disabled={busy}
-        aria-label="Mode"
-        onChange={(e) => onChange(e.target.value as ProvisionMode)}
-      >
-        <option value="symlink">symlink</option>
-        <option value="copy">copy</option>
-        <option value="off">off here</option>
-      </select>
+        ariaLabel="Mode"
+        onChange={(v) => onChange(v as ProvisionMode)}
+        options={[
+          { value: "symlink", label: "symlink", dot: "var(--series-1)" },
+          { value: "copy", label: "copy", dot: "var(--series-4)" },
+          { value: "off", label: "off here", dot: "var(--text-muted)" },
+        ]}
+      />
     </span>
   );
 }

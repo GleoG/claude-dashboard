@@ -8,6 +8,7 @@ import {
   type SearchScope,
   type SessionRow,
 } from "../api.ts";
+import { Select } from "./Select.tsx";
 
 /**
  * SQLite marks the matched terms with ⟪ ⟫ rather than HTML, so the snippet can be
@@ -244,19 +245,15 @@ export function HistoryView({
             <span style={{ flex: 1 }} />
             <label className="pager-size">
               Per page
-              <select
-                value={perPage}
-                onChange={(e) => {
-                  setPerPage(Number(e.target.value));
+              <Select
+                compact
+                value={String(perPage)}
+                onChange={(v) => {
+                  setPerPage(Number(v));
                   setPage(0);
                 }}
-              >
-                {PER_PAGE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+                options={PER_PAGE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+              />
             </label>
             <div className="pager-nav">
               <button

@@ -336,7 +336,9 @@ export type Settings = {
     worktreeProvisionByRepo?: Record<string, ProvisionRule[]>;
     /** Allow provisioning to add those paths to .git/info/exclude. Off by default. */
     worktreeExclude?: boolean;
-
+    disabledModels?: string[];
+    defaultModel?: string;
+    customModels?: { value: string; label: string }[];
   };
 };
 
@@ -395,6 +397,12 @@ export type McpPayload = {
   /** A health check is running right now; the list is the previous one until it lands. */
   checking: boolean;
   logins: McpLogin[];
+};
+
+export const configApi = {
+  get: () => get<{ budgets: unknown; pricing: Record<string, { input: number; output: number }> }>(
+    "/api/config",
+  ),
 };
 
 export const mcpApi = {

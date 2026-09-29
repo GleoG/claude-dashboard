@@ -12,6 +12,20 @@ export const DB_PATH = join(DATA_DIR, "index.db");
 
 export const PORT = Number(process.env.PORT ?? 5757);
 
+/**
+ * The environment for any spawn of the `claude` binary.
+ *
+ * Sessions are meant to behave like a Claude started in the same terminal, so this
+ * is `process.env` as-is apart from `XPC_FLAGS`. With the 0x2 bit set — which some
+ * terminals (Supacode) export, while Terminal.app uses 0x0 — the binary fails to
+ * read the login out of the macOS Keychain and every turn answers "Not logged in"
+ * in ~50ms without an API call. The daemon inherits whatever the launching shell
+ * happened to have, so it is pinned here rather than left to how it was started.
+ */
+export function claudeEnv(extra?: Record<string, string>): Record<string, string | undefined> {
+  return { ...process.env, ...extra, XPC_FLAGS: "0x0" };
+}
+
 /** ~/.claude/projects dirs are the cwd with / replaced by -; recover a display path. */
 export function slugToPath(slug: string): string {
   return slug.replace(/^-/, "/").replace(/-/g, "/");

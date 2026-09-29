@@ -165,6 +165,9 @@ export type Settings = {
     worktreeExclude?: boolean;
     /** Named themes, newest first. Replaced wholesale like appearance is. */
     themes?: SavedTheme[];
+    disabledModels?: string[];
+    defaultModel?: string;
+    customModels?: { value: string; label: string }[];
   };
 };
 

@@ -30,6 +30,7 @@ import {
 import { highlight } from "./highlight.tsx";
 import { Markdown, handleMdCopy } from "./Markdown.tsx";
 import { ScrollJump, useJumpToEnd, useScrollEdges } from "./scroll.tsx";
+import { Select } from "./Select.tsx";
 
 /** What the composer holds between a paste and a send. */
 type Attachment = {
@@ -820,34 +821,27 @@ export function LiveConversation({
         <ModelPicker
           value={data.model}
           models={data.models}
+          customModels={settings?.ui.customModels ?? []}
+          disabledModels={settings?.ui.disabledModels ?? []}
           disabled={ended}
           onChange={(m) => {
             setNote(null);
             agentApi.model(agentKey, m).catch((err: Error) => setNote(err.message));
           }}
         />
-        <span className="select-wrap small">
-          <select
-            className="mini-select select"
-            value={data.permissionMode}
-            // A rejected switch has to say so: the select would otherwise snap
-            // back to the old value with no explanation.
-            onChange={(e) => {
-              setNote(null);
-              agentApi
-                .mode(agentKey, e.target.value as PermissionMode)
-                .catch((err: Error) => setNote(err.message));
-            }}
-            disabled={ended}
-            title={MODE_HELP[data.permissionMode] ?? "Permission mode"}
-          >
-            {MODES.map((m) => (
-              <option key={m} value={m} title={MODE_HELP[m]}>
-                {MODE_LABEL[m]}
-              </option>
-            ))}
-          </select>
-        </span>
+        <Select
+          compact
+          value={data.permissionMode}
+          disabled={ended}
+          ariaLabel="Permission mode"
+          onChange={(v) => {
+            setNote(null);
+            agentApi
+              .mode(agentKey, v as PermissionMode)
+              .catch((err: Error) => setNote(err.message));
+          }}
+          options={MODES.map((m) => ({ value: m, label: MODE_LABEL[m], hint: MODE_HELP[m] }))}
+        />
         <label className="check" title="Hide tool calls and thinking, keeping the conversation">
           <input
             type="checkbox"
@@ -1280,35 +1274,38 @@ export function LiveConversation({
 function ModelPicker({
   value,
   models,
+  customModels = [],
+  disabledModels = [],
   disabled,
   onChange,
 }: {
   value: string | null;
   models: ModelInfo[] | null;
+  customModels?: { value: string; label: string }[];
+  disabledModels?: string[];
   disabled: boolean;
   onChange: (model: string) => void;
 }) {
-  const list = models ?? [];
+  const cliModels = (models ?? []).map((m) => ({ value: m.value, label: m.displayName, hint: m.description }));
+  const combined = [
+    ...cliModels,
+    ...customModels
+      .filter((c) => !cliModels.some((m) => m.value === c.value))
+      .map((c) => ({ value: c.value, label: c.label, hint: c.value })),
+  ];
+  const list = combined.filter((m) => !disabledModels.includes(m.value));
   // The running model is often an explicit id ('claude-opus-5[1m]') that matches
-  // no alias row, so it needs its own entry or the select would look unset.
+  // no alias row, so it needs its own entry or the picker would look unset.
   const missing = value && !list.some((m) => m.value === value);
   return (
-    <span className="select-wrap small">
-      <select
-      className="mini-select select"
+    <Select
+      compact
       value={value ?? "default"}
       disabled={disabled}
-      title="Model"
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {list.map((m) => (
-        <option key={m.value} value={m.value}>
-          {m.displayName}
-        </option>
-      ))}
-      {missing && <option value={value}>{value}</option>}
-      </select>
-    </span>
+      ariaLabel="Model"
+      onChange={onChange}
+      options={[...list, ...(missing && value ? [{ value, label: value }] : [])]}
+    />
   );
 }
 
