@@ -71,6 +71,36 @@ export function slashTokenAt(
   return at ? { word: at[1], start: caret - at[1].length - 1 } : null;
 }
 
+/**
+ * How well a command name matches what was typed, lowest first, or `null` if it
+ * isn't a match at all.
+ *
+ * A plain `.includes()` puts "/m" and "qargo:morning-inbox" on equal footing with
+ * "model", so the thing you actually meant can lose to something that merely
+ * contains the letter somewhere in the middle. Namespaced names (`qargo:todo`) are
+ * ranked on their own segment too, so "/todo" finds "qargo:todo" as readily as a
+ * plain "todo" would.
+ */
+function commandRank(name: string, typed: string): number | null {
+  const n = name.toLowerCase();
+  const q = typed.toLowerCase();
+  if (!q) return n.length;
+  if (n === q) return 0;
+  const segment = n.includes(":") ? n.slice(n.indexOf(":") + 1) : n;
+  if (n.startsWith(q)) return 1;
+  if (segment !== n && segment.startsWith(q)) return 2;
+  if (n.includes(q)) return 3;
+  return null;
+}
+
+function rankCommands<T extends { name: string }>(commands: T[], typed: string): T[] {
+  return commands
+    .map((c) => ({ c, rank: commandRank(c.name, typed) }))
+    .filter((x): x is { c: T; rank: number } => x.rank !== null)
+    .sort((a, b) => a.rank - b.rank || a.c.name.length - b.c.name.length || a.c.name.localeCompare(b.c.name))
+    .map((x) => x.c);
+}
+
 type TurnImage = NonNullable<Extract<TimelineItem, { kind: "user" }>["images"]>[number];
 
 /**
@@ -533,11 +563,7 @@ export function LiveConversation({
   const atToken = open ? atTok : null;
   const files = atToken ? fileHits : [];
   const matches =
-    typed && data?.commands
-      ? data.commands
-          .filter((c) => c.name.toLowerCase().includes(typed.word.toLowerCase()))
-          .slice(0, 8)
-      : [];
+    typed && data?.commands ? rankCommands(data.commands, typed.word).slice(0, 8) : [];
 
   /**
    * Only commands the session itself reports are highlighted, so the mark answers
