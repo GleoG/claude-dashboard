@@ -266,6 +266,8 @@ export type AgentDetail = AgentSummary & {
   tasks: TaskInfo[];
   /** Slash commands this session accepts: skills, plugins, prompt-level built-ins. */
   commands: SlashCommand[] | null;
+  /** The CLI's predicted next prompt after an idle turn, offered as ghost text. */
+  suggestion: string | null;
   /** Tail of the child process's stderr — the clue when it dies unasked. */
   stderr: string;
 };
@@ -934,7 +936,8 @@ type AgentBusEvent =
   | { type: "agent-delta"; key: string; text: string }
   | { type: "agent-models"; key: string; models: ModelInfo[] }
   | { type: "agent-commands"; key: string; commands: SlashCommand[] }
-  | { type: "agent-tasks"; key: string; tasks: TaskInfo[] };
+  | { type: "agent-tasks"; key: string; tasks: TaskInfo[] }
+  | { type: "agent-suggestion"; key: string; suggestion: string | null };
 
 const busSubscribers = new Set<(e: AgentBusEvent) => void>();
 
